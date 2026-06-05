@@ -118,7 +118,7 @@ grep -n "iceberg\|warehouse\|s3a" resources/train_spark_mllib_model.py
 
 
 
-### HITO 5: Dockerización y despliegue integrado con Docker Compose
+### 5: Dockerización y despliegue integrado con Docker Compose
 
 * **Requisito:** Lograr el funcionamiento integral de la práctica aislando cada uno de los servicios en contenedores independientes coordinados a través de un archivo `docker-compose.yml`.
 * **Comprobación:** Para comprobar que todos los servicios requeridos (Flask, Spark Master, Spark Workers, Kafka, Cassandra, MongoDB, MinIO) se encuentran levantados y saludables en la misma red virtual, se ejecuta:
@@ -145,5 +145,5 @@ curl -s "http://localhost:9090/api/v1/query?query=kafka_topic_partition_current_
 ```
 
 En Grafana se puede visualizar el número de mensajes procesados en cada topic en tiempo real creando un panel con la métrica `kafka_topic_partition_current_offset`.
+<img width="367" height="222" alt="image" src="https://github.com/user-attachments/assets/f3257778-6fb4-4dac-b78f-b8bf463bd028" />
 
-```
