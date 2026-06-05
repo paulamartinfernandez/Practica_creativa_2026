@@ -1,0 +1,51 @@
+# Dockerfile.flask
+# Servidor web Flask con soporte WebSockets
+# ─────────────────────────────────────────
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Dependencias del sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar y instalar dependencias Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir \
+    Flask \
+    flask-socketio \
+    kafka-python \
+    pymongo \
+    cassandra-driver \
+    eventlet \
+    requests \
+    geopy \
+    beautifulsoup4 \
+    frozendict \
+    tldextract \
+    numpy \
+    scipy \
+    iso8601\
+    pyelasticsearch\
+    joblib\
+    tabulate
+
+# Copiar el código de la aplicación web
+COPY resources/web /app/web
+COPY resources /app/resources
+
+# Variables de entorno con valores por defecto
+ENV FLASK_APP=web/predict_flask.py
+ENV FLASK_ENV=production
+ENV KAFKA_BROKER=kafka:9092
+ENV MONGO_URI=mongodb://mongo:27017
+ENV CASSANDRA_HOST=cassandra
+ENV PROJECT_HOME=/app
+
+EXPOSE 5000
+
+# Arrancar con eventlet para soporte de WebSockets
+WORKDIR /app
+ENV PYTHONPATH=/app/web
+CMD ["python", "web/predict_flask.py"]

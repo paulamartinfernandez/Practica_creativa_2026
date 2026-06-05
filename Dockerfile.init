@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────
+# Dockerfile.init
+# Inicializa Cassandra con las distancias
+# y sube datos de vuelos a MinIO/Iceberg
+# ─────────────────────────────────────────
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    cassandra-driver \
+    pymongo \
+    boto3 \
+    requests
+
+# Copiar scripts de inicialización y datos
+COPY resources /app/resources
+
+ENV CASSANDRA_HOST=cassandra
+ENV MONGO_URI=mongodb://mongo:27017
+ENV MINIO_ENDPOINT=http://minio:9000
+ENV MINIO_ACCESS_KEY=minioadmin
+ENV MINIO_SECRET_KEY=minioadmin
+
+CMD ["python", "/app/resources/init_data.py"]

@@ -1,0 +1,13 @@
+target/
+.env
+env/
+__pycache__/
+*.jar
+*.pyc
+*.log
+minikube-linux-amd64
+k8s
+flight_prediction/project/target/
+flight_prediction/target/
+minikube-linux-amd64
+kafka_2.12-3.9.0/

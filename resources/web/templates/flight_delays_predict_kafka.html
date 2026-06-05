@@ -1,0 +1,93 @@
+{% extends "layout.html" %}
+{% block body %}
+  / <a href="/flights/delays/predict_kafka">Flight Delay Prediction with Kafka</a>
+  <p class="lead" style="margin: 10px; margin-left: 0px;">
+    Predicting Flight Delays with Kafka + WebSockets
+  </p>
+
+  <form id="flight_delay_classification">
+    {% for item in form_config %}
+      {% if 'label' in item %}
+        <label for="{{item['field']}}">{{item['label']}}</label>
+      {% else %}
+        <label for="{{item['field']}}">{{item['field']}}</label>
+      {% endif %}
+      <input name="{{item['field']}}" style="width: 60px; margin-right: 10px;"
+        {% if 'value' in item %}value="{{item['value']}}"{% endif %}
+      ></input>
+    {% endfor %}
+    <button type="button" onclick="submitPrediction()"
+      class="btn btn-xs btn-default" style="height: 25px">Submit</button>
+  </form>
+
+  <div style="margin-top: 10px;">
+    <p>Status: <span id="status" style="display: inline-block; color: gray;">Waiting...</span></p>
+    <p>Delay prediction: <span id="result" style="display: inline-block; font-weight: bold;"></span></p>
+  </div>
+
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+
+    // Etiquetas para los valores de predicción del modelo RandomForest
+    const predictionLabels = {
+      0: "No delay",
+      1: "Small delay (< 15 min)",
+      2: "Medium delay (15–60 min)",
+      3: "Large delay (> 60 min)",
+      4: "Cancelled / Diverted"
+    };
+
+    function submitPrediction() {
+      const form   = document.getElementById('flight_delay_classification');
+      const data   = new FormData(form);
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
+
+      status.style.color = 'gray';
+      status.textContent = 'Sending to Kafka...';
+      result.textContent = '';
+
+      fetch('/flights/delays/predict/classify_realtime', {
+        method: 'POST',
+        body: data
+      })
+      .then(r => r.json())
+      .then(response => {
+        if (response.status === 'OK') {
+          const uuid = response.id;
+          status.textContent = 'Waiting for prediction...';
+
+          // Unirse a la sala del UUID para recibir el resultado
+          socket.emit('join', { uuid: uuid });
+        } else {
+          status.style.color = 'red';
+          status.textContent = 'Error sending request';
+        }
+      })
+      .catch(err => {
+        status.style.color = 'red';
+        status.textContent = 'Connection error: ' + err;
+      });
+    }
+
+    // Cuando llega la predicción por WebSocket
+    socket.on('prediction_result', function(data) {
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
+
+      const pred  = data.prediction !== undefined ? data.prediction : data.Prediction;
+      const label = predictionLabels[pred] || 'Prediction: ' + pred;
+
+      status.style.color = 'green';
+      status.textContent = 'Done!';
+      result.textContent = label;
+
+      console.log('Prediction received:', data);
+    });
+
+    socket.on('connect', () => console.log('WebSocket connected'));
+    socket.on('disconnect', () => console.log('WebSocket disconnected'));
+  </script>
+{% endblock %}

@@ -1,0 +1,101 @@
+# ─────────────────────────────────────────
+# Dockerfile.spark
+# Imagen para entrenamiento y predicción
+# con Spark 3.5.3 + Scala 2.12 + soporte
+# Iceberg, Kafka, Cassandra y MinIO
+# ─────────────────────────────────────────
+FROM apache/spark:3.5.3
+
+USER root
+
+# Dependencias del sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    curl \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Dependencias Python para el entrenamiento
+RUN pip3 install --no-cache-dir \
+    pyspark==3.5.3 \
+    findspark \
+    numpy \
+    scikit-learn \
+    pymongo \
+    kafka-python \
+    cassandra-driver \
+    boto3 \
+    pyarrow \
+    pandas \
+    mlflow
+# ── Descargar JARs necesarios para Spark ──
+
+ENV SPARK_JARS_DIR=/opt/spark/jars
+
+# Kafka connector
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.3/spark-token-provider-kafka-0-10_2.12-3.5.3.jar
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.3/spark-sql-kafka-0-10_2.12-3.5.3.jar
+
+# MongoDB Spark connector
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/mongodb/spark/mongo-spark-connector_2.12/10.4.1/mongo-spark-connector_2.12-10.4.1.jar
+
+# Iceberg Spark runtime
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.5.0/iceberg-spark-runtime-3.5_2.12-1.5.0.jar
+
+# AWS S3/MinIO (hadoop-aws + aws-java-sdk)
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar \
+    && wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
+
+# Cassandra Spark connector
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/com/datastax/spark/spark-cassandra-connector-assembly_2.12/3.5.0/spark-cassandra-connector-assembly_2.12-3.5.0.jar
+
+# Kafka clients (necesario para Spark Streaming)
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.5.1/kafka-clients-3.5.1.jar
+
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-sync/4.11.1/mongodb-driver-sync-4.11.1.jar \
+    && wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-core/4.11.1/mongodb-driver-core-4.11.1.jar \
+    && wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/mongodb/bson/4.11.1/bson-4.11.1.jar
+# Commons Pool2 (necesario para Kafka consumer pool)
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar
+# JNR POSIX (necesario para Cassandra connector)
+RUN wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/com/github/jnr/jnr-posix/3.1.15/jnr-posix-3.1.15.jar \
+    && wget -q -P ${SPARK_JARS_DIR} \
+    https://repo1.maven.org/maven2/com/github/jnr/jnr-ffi/2.2.13/jnr-ffi-2.2.13.jar
+WORKDIR /app
+
+# Copiar el código fuente
+COPY resources /app/resources
+COPY flight_prediction /app/flight_prediction
+
+# Variables de entorno por defecto
+ENV SPARK_HOME=/opt/spark
+ENV PYTHONPATH=${SPARK_HOME}/python:${SPARK_HOME}/python/lib/py4j-0.10.9.7-src.zip
+ENV PYSPARK_PYTHON=python3
+ENV MINIO_ENDPOINT=http://minio:9000
+ENV MINIO_ACCESS_KEY=minioadmin
+ENV MINIO_SECRET_KEY=minioadmin
+ENV MONGO_URI=mongodb://mongo:27017
+ENV KAFKA_BROKER=kafka:9092
+ENV CASSANDRA_HOST=cassandra
+# Forzar carga de JARs en todos los nodos (driver + executors)
+RUN mkdir -p /opt/spark/conf && \
+    echo "spark.driver.extraClassPath   /opt/spark/jars/spark-sql-kafka-0-10_2.12-3.5.3.jar:/opt/spark/jars/kafka-clients-3.5.1.jar:/opt/spark/jars/spark-token-provider-kafka-0-10_2.12-3.5.3.jar:/opt/spark/jars/mongo-spark-connector_2.12-10.4.1.jar:/opt/spark/jars/spark-cassandra-connector-assembly_2.12-3.5.0.jar:/opt/spark/jars/commons-pool2-2.11.1.jar:/opt/spark/jars/jnr-posix-3.1.15.jar:/opt/spark/jars/jnr-ffi-2.2.13.jar" >> /opt/spark/conf/spark-defaults.conf && \
+    echo "spark.executor.extraClassPath /opt/spark/jars/spark-sql-kafka-0-10_2.12-3.5.3.jar:/opt/spark/jars/kafka-clients-3.5.1.jar:/opt/spark/jars/spark-token-provider-kafka-0-10_2.12-3.5.3.jar:/opt/spark/jars/mongo-spark-connector_2.12-10.4.1.jar:/opt/spark/jars/spark-cassandra-connector-assembly_2.12-3.5.0.jar:/opt/spark/jars/commons-pool2-2.11.1.jar:/opt/spark/jars/jnr-posix-3.1.15.jar:/opt/spark/jars/jnr-ffi-2.2.13.jar" >> /opt/spark/conf/spark-defaults.conf
+COPY resources/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+# El entrypoint por defecto es el de bitnami (gestiona master/worker)
+# Para jobs se llama directamente con docker exec o un servicio aparte
